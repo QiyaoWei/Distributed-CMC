@@ -1,5 +1,1 @@
-# Distributed-CMC
-# Distributed-CMC
-# DistCMC
-# DistCMC
-# Distributed-CMC
+# Distributed (multi-gpu) adaptation of Contrastive Multiview Coding (CMC)
