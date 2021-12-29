@@ -12,11 +12,12 @@ import argparse
 import tensorboard_logger as tb_logger
 
 from torchvision import transforms, datasets
-from dataset import RGB2Lab, RGB2YCbCr
+#from dataset import RGB2Lab, RGB2YCbCr
 from util import adjust_learning_rate, AverageMeter
 
 from models.alexnet import MyAlexNetCMC
 from models.resnet import MyResNetsCMC
+from models.mynet import MyNetCMC
 from NCE.NCEAverage import NCEAverage
 from NCE.NCECriterion import NCECriterion
 from NCE.NCECriterion import NCESoftmaxLoss
@@ -25,7 +26,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import torch.utils.data.distributed
 
-from dataset import ImageFolderInstance
+from load_point_cloud import Dataset
 
 try:
     from apex import amp, argsimizers
@@ -142,11 +143,11 @@ def get_train_loader(args):
     if args.view == 'Lab':
         mean = [(0 + 100) / 2, (-86.183 + 98.233) / 2, (-107.857 + 94.478) / 2]
         std = [(100 - 0) / 2, (86.183 + 98.233) / 2, (107.857 + 94.478) / 2]
-        color_transfer = RGB2Lab()
+        #color_transfer = RGB2Lab()
     elif args.view == 'YCbCr':
         mean = [116.151, 121.080, 132.342]
         std = [109.500, 111.855, 111.964]
-        color_transfer = RGB2YCbCr()
+        #color_transfer = RGB2YCbCr()
     else:
         raise NotImplemented('view not implemented {}'.format(args.view))
     normalize = transforms.Normalize(mean=mean, std=std)
@@ -154,37 +155,40 @@ def get_train_loader(args):
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(224, scale=(args.crop_low, 1.)),
         transforms.RandomHorizontalFlip(),
-        color_transfer,
+        #color_transfer,
         transforms.ToTensor(),
         normalize,
     ])
 
     #Qiyao changed this, but can be easily changed back for ShapeNet files
-    train_dataset = datasets.CIFAR10("temp", transform=train_transform, download=True)
+    #train_dataset = datasets.CIFAR10("temp", transform=train_transform, download=True)
     #train_dataset = ImageFolderInstance(data_folder, transform=train_transform)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
+    #train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
 
     # train loader
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
-        num_workers=args.num_workers, pin_memory=True, sampler=train_sampler)
+    #train_loader = torch.utils.data.DataLoader(
+    #    train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+    #    num_workers=args.num_workers, pin_memory=True, sampler=train_sampler)
 
     # num of samples
-    n_data = len(train_dataset)
-    print('number of samples: {}'.format(n_data))
+    #n_data = len(train_dataset)
+    #print('number of samples: {}'.format(n_data))
 
-    return train_loader, n_data
+    train_dataset = Dataset(root="data",dataset_name="shapenetcorev2",split='all',num_points=1024,random_translate=True,random_rotate=False,random_jitter=False)
+    train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=16,shuffle=True,num_workers=16)
+    print("Training set size:", train_loader.dataset.__len__())
+    return train_loader, train_loader.dataset.__len__()
 
 
 def set_model(args, n_data):
     # set the model
-    if args.model == 'alexnet':
-        model = MyAlexNetCMC(args.feat_dim)
-    elif args.model.startswith('resnet'):
-        model = MyResNetsCMC(args.model)
-    else:
-        raise ValueError('model not supported yet {}'.format(args.model))
-
+    #if args.model == 'alexnet':
+    #    model = MyAlexNetCMC(args.feat_dim)
+    #elif args.model.startswith('resnet'):
+    #    model = MyResNetsCMC(args.model)
+    #else:
+    #    raise ValueError('model not supported yet {}'.format(args.model))
+    model = MyNetCMC(args.feat_dim)
     contrast = NCEAverage(args.feat_dim, n_data, args.nce_k, args.nce_t, args.nce_m, args.softmax)
     criterion_l = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
     criterion_ab = NCESoftmaxLoss() if args.softmax else NCECriterion(n_data)
@@ -228,12 +232,12 @@ def train(epoch, train_loader, model, contrast, criterion_l, criterion_ab, optim
     end = time.time()
     for idx, (datains, index) in enumerate(train_loader):
         data_time.update(time.time() - end)
-
+        
         bsz = datains.size(0)
         datains = datains.float()
         datains.cuda(args.gpu, non_blocking=True)
         index.cuda(args.gpu, non_blocking=True)
-        print(datains.size())
+        datains = datains.reshape(-1, 3, 32, 32)
         # Qiyao commented this for DDP to work
         #if torch.cuda.is_available():
             #index = index.cuda()

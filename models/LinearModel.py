@@ -10,6 +10,17 @@ class Flatten(nn.Module):
     def forward(self, feat):
         return feat.view(feat.size(0), -1)
 
+class MyLinear(nn.Module):
+    def __init__(self, layer=5, n_label=16, pool_type='max'):
+        super(MyLinear, self).__init__()
+        self.linear = nn.Linear(7*7*512, 100)
+        self.output = nn.Linear(100, n_label)
+
+    def forward(self, x):
+        x = x.view(x.shape[0], -1)
+        x = self.linear(x)
+        return self.output(x)
+
 
 class LinearClassifierAlexNet(nn.Module):
     def __init__(self, layer=5, n_label=1000, pool_type='max'):
